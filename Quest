@@ -1,0 +1,225 @@
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local LP = Players.LocalPlayer
+
+local Remote = RS:WaitForChild("Remotes"):WaitForChild("Gameplays"):WaitForChild("Request")
+local running = false
+
+local function isMobAlive(model)
+    if not model or not model.Parent then return false end
+    local h = model:FindFirstChildOfClass("Humanoid")
+    return h and h.Health > 0
+end
+
+local function findMob(name)
+    local s = workspace:FindFirstChild("Worlds")
+    if not s then return nil end
+    s = s:FindFirstChild("Targets")
+    if not s then return nil end
+    s = s:FindFirstChild("Server")
+    if not s then return nil end
+    for _, model in ipairs(s:GetChildren()) do
+        local ud = model:FindFirstChild("Units_Displays")
+        if ud then
+            local n = ud:FindFirstChild("Names")
+            local h = model:FindFirstChildOfClass("Humanoid")
+            if n and h and h.Health > 0 and n.Text:find(name, 1, true) then
+                return model
+            end
+        end
+    end
+    return nil
+end
+
+local function getQuests()
+    local quests = {}
+    local ok, list = pcall(function()
+        return LP.PlayerGui:WaitForChild("HUD")
+            :WaitForChild("RightSide")
+            :WaitForChild("Quest")
+            :WaitForChild("List")
+    end)
+    if not ok or not list then return quests end
+    for _, child in ipairs(list:GetChildren()) do
+        if child:IsA("Frame") then
+            local names = child:FindFirstChild("Names")
+            if names and names.Text ~= "" then
+                local cur, tot, mob = names.Text:match("%((%d+)%/(%d+)%)%s*Defeat%s*%d+%s*(.+)")
+                if mob and tonumber(cur) and tonumber(tot) and tonumber(cur) < tonumber(tot) then
+                    table.insert(quests, mob:match("^%s*(.-)%s*$"))
+                end
+            end
+        end
+    end
+    return quests
+end
+
+local function teleportToMob(model)
+    local char = LP.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local mobRoot = model:FindFirstChild("HumanoidRootPart")
+    if not root or not mobRoot then return end
+    root.CFrame = mobRoot.CFrame * CFrame.new(4, 0, 4)
+end
+
+-- UI I Guess
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoQuestGui"
+gui.ResetOnSpawn = false
+gui.Parent = game:GetService("CoreGui")
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 200, 0, 130)
+main.Position = UDim2.new(0, 10, 0.4, 0)
+main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+main.BorderSizePixel = 0
+main.Parent = gui
+Instance.new("UICorner").Parent = main
+
+local grad = Instance.new("UIGradient")
+grad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 20, 35)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 10, 15))
+})
+grad.Rotation = 135
+grad.Parent = main
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(80, 60, 180)
+stroke.Thickness = 1.5
+stroke.Parent = main
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 35)
+title.BackgroundTransparency = 1
+title.Text = "⚔ AUTO QUEST"
+title.TextColor3 = Color3.fromRGB(160, 120, 255)
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.Parent = main
+
+local divider = Instance.new("Frame")
+divider.Size = UDim2.new(0.9, 0, 0, 1)
+divider.Position = UDim2.new(0.05, 0, 0, 36)
+divider.BackgroundColor3 = Color3.fromRGB(80, 60, 180)
+divider.BorderSizePixel = 0
+divider.Parent = main
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, 0, 0, 25)
+statusLabel.Position = UDim2.new(0, 0, 0, 42)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: Idle"
+statusLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+statusLabel.TextScaled = true
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.Parent = main
+
+local targetLabel = Instance.new("TextLabel")
+targetLabel.Size = UDim2.new(1, -10, 0, 20)
+targetLabel.Position = UDim2.new(0, 5, 0, 68)
+targetLabel.BackgroundTransparency = 1
+targetLabel.Text = "Target: —"
+targetLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
+targetLabel.TextScaled = true
+targetLabel.Font = Enum.Font.Gotham
+targetLabel.Parent = main
+
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(0.85, 0, 0, 35)
+btn.Position = UDim2.new(0.075, 0, 0, 90)
+btn.BackgroundColor3 = Color3.fromRGB(40, 30, 80)
+btn.TextColor3 = Color3.fromRGB(160, 120, 255)
+btn.TextScaled = true
+btn.Text = "START"
+btn.Font = Enum.Font.GothamBold
+btn.BorderSizePixel = 0
+btn.Parent = main
+Instance.new("UICorner").Parent = btn
+
+local btnStroke = Instance.new("UIStroke")
+btnStroke.Color = Color3.fromRGB(100, 70, 200)
+btnStroke.Thickness = 1
+btnStroke.Parent = btn
+
+btn.MouseEnter:Connect(function()
+    TweenService:Create(btn, TweenInfo.new(0.2), {
+        BackgroundColor3 = Color3.fromRGB(60, 45, 120)
+    }):Play()
+end)
+
+btn.MouseLeave:Connect(function()
+    TweenService:Create(btn, TweenInfo.new(0.2), {
+        BackgroundColor3 = running and Color3.fromRGB(20, 80, 20) or Color3.fromRGB(40, 30, 80)
+    }):Play()
+end)
+
+local function startLoop()
+    while running do
+        local quests = getQuests()
+
+        if #quests == 0 then
+            statusLabel.Text = "Status: No Quests"
+            targetLabel.Text = "Target: —"
+            task.wait(2)
+            continue
+        end
+
+        for _, mobName in ipairs(quests) do
+            if not running then break end
+
+            statusLabel.Text = "Status: Hunting"
+            targetLabel.Text = "Target: " .. mobName
+
+            local mob = findMob(mobName)
+            if mob and isMobAlive(mob) then
+                teleportToMob(mob)
+                task.wait(0.3)
+                pcall(function()
+                    Remote:FireServer(mob.Name, "Mouse")
+                end)
+
+                while isMobAlive(mob) and running do
+                    teleportToMob(mob)
+                    pcall(function()
+                        Remote:FireServer(mob.Name, "Mouse")
+                    end)
+                    task.wait(3)
+                end
+            else
+                task.wait(1)
+            end
+        end
+
+        task.wait(0.5)
+    end
+end
+
+btn.MouseButton1Click:Connect(function()
+    running = not running
+    if running then
+        TweenService:Create(btn, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(20, 80, 20)
+        }):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.3), {
+            Color = Color3.fromRGB(50, 200, 100)
+        }):Play()
+        btn.Text = "STOP"
+        btn.TextColor3 = Color3.fromRGB(100, 255, 150)
+        statusLabel.Text = "Status: Running"
+        task.spawn(startLoop)
+    else
+        TweenService:Create(btn, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(40, 30, 80)
+        }):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.3), {
+            Color = Color3.fromRGB(80, 60, 180)
+        }):Play()
+        btn.Text = "START"
+        btn.TextColor3 = Color3.fromRGB(160, 120, 255)
+        statusLabel.Text = "Status: Idle"
+        targetLabel.Text = "Target: —"
+    end
+end)
