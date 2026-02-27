@@ -71,8 +71,8 @@ gui.ResetOnSpawn = false
 gui.Parent = game:GetService("CoreGui")
 
 local main = Instance.new("Frame")
-main.Size = UDim2.new(0, 200, 0, 130)
-main.Position = UDim2.new(0, 10, 0.4, 0)
+main.Size = UDim2.new(0, 130, 0, 70)
+main.Position = UDim2.new(0, 2, 1, -100)
 main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 main.BorderSizePixel = 0
 main.Parent = gui
