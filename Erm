@@ -1,0 +1,385 @@
+-- Auto Reroll Script with Grade System
+-- Units: PlayerGui.Units._Frame.Usage.BODY.Useable.Interview (child names = IDs)
+-- Stats: PlayerGui.Talents._Frame.Usage.BODY.Grade.[STAT].Numbers (ContentText)
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer.PlayerGui
+local RS = game:GetService("ReplicatedStorage")
+local Remote = RS:WaitForChild("Remotes"):WaitForChild("Systems"):WaitForChild("Potentials_Rolling")
+
+-- ===================== GRADES =====================
+local GRADES = {
+    "SSS+", "SSS", "SSS-",
+    "SS+",  "SS",  "SS-",
+    "S+",   "S",   "S-",
+    "A+",   "A",   "A-",
+    "B+",   "B",   "B-",
+    "C+",   "C",   "C-",
+    "D+",   "D",   "D-",
+    "E+",   "E",   "E-",
+}
+
+local GRADE_RANK = {}
+for i, g in ipairs(GRADES) do GRADE_RANK[g] = i end
+
+local function gradeFromText(text)
+    text = text:gsub("%s+", "")
+    for _, g in ipairs(GRADES) do
+        if text == g then return g end
+    end
+    for _, g in ipairs(GRADES) do
+        if text:find(g, 1, true) then return g end
+    end
+    return nil
+end
+
+local function isGoodEnough(cur, target)
+    if not cur or not target then return false end
+    local cr, tr = GRADE_RANK[cur], GRADE_RANK[target]
+    if not cr or not tr then return false end
+    return cr <= tr -- lower index = better grade
+end
+
+-- ===================== CONFIG =====================
+local STATS = {"Speed", "Critical_Damage", "Abilities_DMG", "Damage"}
+local STAT_DISPLAY = {
+    Speed           = "🤑Speed",
+    Critical_Damage = "🥀Critical",
+    Abilities_DMG   = "💔Ability DMG",
+    Damage          = "😈Damage",
+}
+
+local gradeColors = {
+    ["SSS+"]=Color3.fromRGB(255,180,0),  ["SSS"]=Color3.fromRGB(255,190,30),  ["SSS-"]=Color3.fromRGB(255,200,60),
+    ["SS+"]=Color3.fromRGB(180,80,255),  ["SS"]=Color3.fromRGB(190,100,255),  ["SS-"]=Color3.fromRGB(200,120,255),
+    ["S+"]=Color3.fromRGB(80,180,255),   ["S"]=Color3.fromRGB(100,195,255),   ["S-"]=Color3.fromRGB(120,210,255),
+    ["A+"]=Color3.fromRGB(80,220,120),   ["A"]=Color3.fromRGB(100,230,140),   ["A-"]=Color3.fromRGB(120,240,160),
+    ["B+"]=Color3.fromRGB(220,220,80),   ["B"]=Color3.fromRGB(230,230,100),   ["B-"]=Color3.fromRGB(240,240,120),
+    ["C+"]=Color3.fromRGB(220,140,80),   ["C"]=Color3.fromRGB(230,155,100),   ["C-"]=Color3.fromRGB(240,170,120),
+    ["D+"]=Color3.fromRGB(180,80,80),    ["D"]=Color3.fromRGB(200,100,100),   ["D-"]=Color3.fromRGB(210,120,120),
+    ["E+"]=Color3.fromRGB(130,130,130),  ["E"]=Color3.fromRGB(145,145,145),   ["E-"]=Color3.fromRGB(160,160,160),
+}
+
+-- ===================== STATE =====================
+local selectedUnit = nil
+local isRunning    = false
+local statToggles  = {Speed=false, Critical_Damage=false, Abilities_DMG=false, Damage=false}
+local statTargets  = {Speed="S",   Critical_Damage="S",   Abilities_DMG="S",   Damage="S"}
+
+-- ===================== GUI =====================
+if PlayerGui:FindFirstChild("AutoRerollGUI") then PlayerGui.AutoRerollGUI:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AutoRerollGUI"; ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; ScreenGui.Parent = PlayerGui
+
+local Main = Instance.new("Frame")
+Main.Name="MainFrame"; Main.Size=UDim2.new(0,335,0,570)
+Main.Position=UDim2.new(0.5,-167,0.5,-285)
+Main.BackgroundColor3=Color3.fromRGB(13,12,22)
+Main.BorderSizePixel=0; Main.Active=true; Main.Draggable=true; Main.Parent=ScreenGui
+Instance.new("UICorner",Main).CornerRadius=UDim.new(0,14)
+local mst=Instance.new("UIStroke",Main); mst.Color=Color3.fromRGB(110,55,230); mst.Thickness=2
+
+-- Title
+local TB=Instance.new("Frame",Main)
+TB.Size=UDim2.new(1,0,0,46); TB.BackgroundColor3=Color3.fromRGB(22,14,44); TB.BorderSizePixel=0
+Instance.new("UICorner",TB).CornerRadius=UDim.new(0,14)
+local TL=Instance.new("TextLabel",TB)
+TL.Size=UDim2.new(1,-50,1,0); TL.Position=UDim2.new(0,14,0,0)
+TL.BackgroundTransparency=1; TL.Text="⚡ Auto Reroll"
+TL.TextColor3=Color3.fromRGB(200,155,255); TL.TextSize=18
+TL.Font=Enum.Font.GothamBold; TL.TextXAlignment=Enum.TextXAlignment.Left
+local CB=Instance.new("TextButton",TB)
+CB.Size=UDim2.new(0,30,0,30); CB.Position=UDim2.new(1,-38,0.5,-15)
+CB.BackgroundColor3=Color3.fromRGB(180,35,35); CB.Text="✕"
+CB.TextColor3=Color3.fromRGB(255,255,255); CB.TextSize=13
+CB.Font=Enum.Font.GothamBold; CB.BorderSizePixel=0
+Instance.new("UICorner",CB).CornerRadius=UDim.new(0,8)
+CB.MouseButton1Click:Connect(function() isRunning=false; ScreenGui:Destroy() end)
+
+-- Scroll
+local Sc=Instance.new("ScrollingFrame",Main)
+Sc.Size=UDim2.new(1,0,1,-46); Sc.Position=UDim2.new(0,0,0,46)
+Sc.BackgroundTransparency=1; Sc.BorderSizePixel=0
+Sc.ScrollBarThickness=4; Sc.ScrollBarImageColor3=Color3.fromRGB(110,55,230)
+Sc.CanvasSize=UDim2.new(0,0,0,0)
+local ScL=Instance.new("UIListLayout",Sc)
+ScL.SortOrder=Enum.SortOrder.LayoutOrder; ScL.Padding=UDim.new(0,7)
+local ScP=Instance.new("UIPadding",Sc)
+ScP.PaddingLeft=UDim.new(0,12); ScP.PaddingRight=UDim.new(0,12)
+ScP.PaddingTop=UDim.new(0,10); ScP.PaddingBottom=UDim.new(0,12)
+ScL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    Sc.CanvasSize=UDim2.new(0,0,0,ScL.AbsoluteContentSize.Y+22)
+end)
+
+local function secLbl(txt,order)
+    local l=Instance.new("TextLabel",Sc)
+    l.Size=UDim2.new(1,0,0,20); l.BackgroundTransparency=1
+    l.Text=txt; l.TextColor3=Color3.fromRGB(155,110,255)
+    l.TextSize=12; l.Font=Enum.Font.GothamBold
+    l.TextXAlignment=Enum.TextXAlignment.Left; l.LayoutOrder=order
+end
+
+-- ====== UNIT DROPDOWN ======
+secLbl("📦  Ünite Seç",1)
+
+local UBtn=Instance.new("TextButton",Sc)
+UBtn.Size=UDim2.new(1,0,0,38); UBtn.BackgroundColor3=Color3.fromRGB(28,25,50)
+UBtn.Text="  -- Ünite Seçin --  ▾"; UBtn.TextColor3=Color3.fromRGB(190,185,230)
+UBtn.TextSize=12; UBtn.Font=Enum.Font.Gotham
+UBtn.TextXAlignment=Enum.TextXAlignment.Left; UBtn.BorderSizePixel=0; UBtn.LayoutOrder=2
+Instance.new("UICorner",UBtn).CornerRadius=UDim.new(0,10)
+local ust=Instance.new("UIStroke",UBtn); ust.Color=Color3.fromRGB(75,55,135); ust.Thickness=1
+
+local UList=Instance.new("ScrollingFrame",Sc)
+UList.Size=UDim2.new(1,0,0,0); UList.BackgroundColor3=Color3.fromRGB(20,18,36)
+UList.BorderSizePixel=0; UList.ScrollBarThickness=3
+UList.ScrollBarImageColor3=Color3.fromRGB(110,55,230)
+UList.Visible=false; UList.LayoutOrder=3; UList.ClipsDescendants=true
+Instance.new("UICorner",UList).CornerRadius=UDim.new(0,10)
+local ULL=Instance.new("UIListLayout",UList); ULL.SortOrder=Enum.SortOrder.LayoutOrder
+local unitOpen=false
+
+local function populateUnits()
+    for _,c in ipairs(UList:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+    local iv=PlayerGui:FindFirstChild("Units") and PlayerGui.Units:FindFirstChild("_Frame")
+        and PlayerGui.Units._Frame:FindFirstChild("Usage")
+        and PlayerGui.Units._Frame.Usage:FindFirstChild("BODY")
+        and PlayerGui.Units._Frame.Usage.BODY:FindFirstChild("Useable")
+        and PlayerGui.Units._Frame.Usage.BODY.Useable:FindFirstChild("Interview")
+    local units={}
+    if iv then
+        for _,c in ipairs(iv:GetChildren()) do
+            if not c:IsA("UIGridLayout") and not c:IsA("UIListLayout") and not c:IsA("UIPadding") then
+                table.insert(units,c.Name)
+            end
+        end
+        table.sort(units)
+    end
+    if #units==0 then
+        local nb=Instance.new("TextButton",UList)
+        nb.Size=UDim2.new(1,0,0,30); nb.BackgroundTransparency=1
+        nb.Text="⚠ Units GUI açık değil!"; nb.TextColor3=Color3.fromRGB(255,80,80)
+        nb.TextSize=11; nb.Font=Enum.Font.Gotham
+        UList.CanvasSize=UDim2.new(0,0,0,30); return
+    end
+    for i,uid in ipairs(units) do
+        local dn=(uid:match("^(.-)%s*%-") or uid):gsub("^%s+",""):gsub("%s+$","")
+        local b=Instance.new("TextButton",UList)
+        b.Size=UDim2.new(1,0,0,32)
+        b.BackgroundColor3=selectedUnit==uid and Color3.fromRGB(65,38,145) or Color3.fromRGB(28,25,48)
+        b.BackgroundTransparency=selectedUnit==uid and 0 or 0.2
+        b.Text="  "..dn; b.TextColor3=Color3.fromRGB(215,210,255)
+        b.TextSize=11; b.Font=Enum.Font.Gotham
+        b.TextXAlignment=Enum.TextXAlignment.Left; b.BorderSizePixel=0; b.LayoutOrder=i
+        b.MouseButton1Click:Connect(function()
+            selectedUnit=uid
+            UBtn.Text="  ✔ "..dn.."  ▾"; UBtn.TextColor3=Color3.fromRGB(130,255,155)
+            unitOpen=false; UList.Visible=false; UList.Size=UDim2.new(1,0,0,0)
+        end)
+    end
+    UList.CanvasSize=UDim2.new(0,0,0,#units*32)
+end
+
+UBtn.MouseButton1Click:Connect(function()
+    unitOpen=not unitOpen
+    if unitOpen then
+        populateUnits()
+        local n=#UList:GetChildren()-1
+        UList.Visible=true; UList.Size=UDim2.new(1,0,0,math.min(n*32,130))
+    else
+        UList.Visible=false; UList.Size=UDim2.new(1,0,0,0)
+    end
+end)
+
+-- ====== STAT ROWS ======
+secLbl("🎯  Stat Hedefleri",4)
+
+local gListRefs={}
+local gOpenState={}
+
+for i,stat in ipairs(STATS) do
+    gOpenState[stat]=false
+
+    -- Row
+    local row=Instance.new("Frame",Sc)
+    row.Size=UDim2.new(1,0,0,42); row.BackgroundColor3=Color3.fromRGB(20,18,36)
+    row.BorderSizePixel=0; row.LayoutOrder=4+i*2
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,10)
+    local rs=Instance.new("UIStroke",row); rs.Color=Color3.fromRGB(50,42,85); rs.Thickness=1
+
+    -- Toggle
+    local tog=Instance.new("TextButton",row)
+    tog.Size=UDim2.new(0,32,0,32); tog.Position=UDim2.new(0,5,0.5,-16)
+    tog.BackgroundColor3=Color3.fromRGB(42,38,68); tog.Text="○"
+    tog.TextColor3=Color3.fromRGB(130,125,175); tog.TextSize=17
+    tog.Font=Enum.Font.GothamBold; tog.BorderSizePixel=0
+    Instance.new("UICorner",tog).CornerRadius=UDim.new(0,8)
+
+    -- Name
+    local sn=Instance.new("TextLabel",row)
+    sn.Size=UDim2.new(0,92,1,0); sn.Position=UDim2.new(0,42,0,0)
+    sn.BackgroundTransparency=1; sn.Text=STAT_DISPLAY[stat]
+    sn.TextColor3=Color3.fromRGB(195,190,225); sn.TextSize=11
+    sn.Font=Enum.Font.Gotham; sn.TextXAlignment=Enum.TextXAlignment.Left
+
+    -- Grade button
+    local gBtn=Instance.new("TextButton",row)
+    gBtn.Size=UDim2.new(0,108,0,30); gBtn.Position=UDim2.new(1,-114,0.5,-15)
+    gBtn.BackgroundColor3=Color3.fromRGB(32,28,55); gBtn.Text="S  ▾"
+    gBtn.TextColor3=gradeColors["S"]; gBtn.TextSize=14
+    gBtn.Font=Enum.Font.GothamBold; gBtn.BorderSizePixel=0
+    Instance.new("UICorner",gBtn).CornerRadius=UDim.new(0,8)
+    local gs=Instance.new("UIStroke",gBtn); gs.Color=Color3.fromRGB(75,55,135); gs.Thickness=1
+
+    -- Grade list
+    local gList=Instance.new("ScrollingFrame",Sc)
+    gList.Size=UDim2.new(1,0,0,0); gList.BackgroundColor3=Color3.fromRGB(18,16,32)
+    gList.BorderSizePixel=0; gList.ScrollBarThickness=3
+    gList.ScrollBarImageColor3=Color3.fromRGB(110,55,230)
+    gList.Visible=false; gList.LayoutOrder=4+i*2+1; gList.ClipsDescendants=true
+    Instance.new("UICorner",gList).CornerRadius=UDim.new(0,10)
+    local gLL=Instance.new("UIListLayout",gList); gLL.SortOrder=Enum.SortOrder.LayoutOrder
+    gListRefs[stat]=gList
+
+    for gi,grade in ipairs(GRADES) do
+        local gb=Instance.new("TextButton",gList)
+        gb.Size=UDim2.new(1,0,0,30)
+        gb.BackgroundColor3=statTargets[stat]==grade and Color3.fromRGB(58,36,120) or Color3.fromRGB(26,23,44)
+        gb.BackgroundTransparency=statTargets[stat]==grade and 0 or 0.25
+        gb.Text=grade; gb.TextColor3=gradeColors[grade] or Color3.fromRGB(220,220,220)
+        gb.TextSize=13; gb.Font=Enum.Font.GothamBold; gb.BorderSizePixel=0; gb.LayoutOrder=gi
+        gb.MouseButton1Click:Connect(function()
+            statTargets[stat]=grade
+            gBtn.Text=grade.."  ▾"; gBtn.TextColor3=gradeColors[grade]
+            for _,c in ipairs(gList:GetChildren()) do
+                if c:IsA("TextButton") then
+                    c.BackgroundColor3=Color3.fromRGB(26,23,44); c.BackgroundTransparency=0.25
+                end
+            end
+            gb.BackgroundColor3=Color3.fromRGB(58,36,120); gb.BackgroundTransparency=0
+            gOpenState[stat]=false; gList.Visible=false; gList.Size=UDim2.new(1,0,0,0)
+        end)
+    end
+    gList.CanvasSize=UDim2.new(0,0,0,#GRADES*30)
+
+    gBtn.MouseButton1Click:Connect(function()
+        -- Close others
+        for _,s2 in ipairs(STATS) do
+            if s2~=stat and gOpenState[s2] then
+                gOpenState[s2]=false
+                gListRefs[s2].Visible=false; gListRefs[s2].Size=UDim2.new(1,0,0,0)
+            end
+        end
+        gOpenState[stat]=not gOpenState[stat]
+        if gOpenState[stat] then
+            gList.Visible=true; gList.Size=UDim2.new(1,0,0,math.min(#GRADES*30,150))
+        else
+            gList.Visible=false; gList.Size=UDim2.new(1,0,0,0)
+        end
+    end)
+
+    tog.MouseButton1Click:Connect(function()
+        statToggles[stat]=not statToggles[stat]
+        if statToggles[stat] then
+            tog.Text="●"; tog.BackgroundColor3=Color3.fromRGB(75,45,185)
+            tog.TextColor3=Color3.fromRGB(195,155,255)
+        else
+            tog.Text="○"; tog.BackgroundColor3=Color3.fromRGB(42,38,68)
+            tog.TextColor3=Color3.fromRGB(130,125,175)
+        end
+    end)
+end
+
+-- ====== STATUS ======
+local StLbl=Instance.new("TextLabel",Sc)
+StLbl.Size=UDim2.new(1,0,0,20); StLbl.BackgroundTransparency=1
+StLbl.Text="⏸  Hazır"; StLbl.TextColor3=Color3.fromRGB(135,130,170)
+StLbl.TextSize=12; StLbl.Font=Enum.Font.Gotham; StLbl.LayoutOrder=30
+
+-- ====== START/STOP ======
+local SBtn=Instance.new("TextButton",Sc)
+SBtn.Size=UDim2.new(1,0,0,44); SBtn.BackgroundColor3=Color3.fromRGB(78,42,195)
+SBtn.Text="▶   Başlat"; SBtn.TextColor3=Color3.fromRGB(255,255,255)
+SBtn.TextSize=15; SBtn.Font=Enum.Font.GothamBold; SBtn.BorderSizePixel=0; SBtn.LayoutOrder=31
+Instance.new("UICorner",SBtn).CornerRadius=UDim.new(0,12)
+local sst=Instance.new("UIStroke",SBtn); sst.Color=Color3.fromRGB(145,95,255); sst.Thickness=2
+
+-- ====== LOGIC ======
+local function getGrade(stat)
+    local p=PlayerGui:FindFirstChild("Talents")
+    if not p then return nil end
+    p=p:FindFirstChild("_Frame"); if not p then return nil end
+    p=p:FindFirstChild("Usage"); if not p then return nil end
+    p=p:FindFirstChild("BODY"); if not p then return nil end
+    p=p:FindFirstChild("Grade"); if not p then return nil end
+    p=p:FindFirstChild(stat); if not p then return nil end
+    local nb=p:FindFirstChild("Numbers"); if not nb then return nil end
+    local txt=(nb.ContentText~="" and nb.ContentText) or nb.Text or ""
+    return gradeFromText(txt:gsub("%s+",""))
+end
+
+local function needsReroll()
+    local any=false
+    for _,stat in ipairs(STATS) do
+        if statToggles[stat] then
+            any=true
+            if not isGoodEnough(getGrade(stat), statTargets[stat]) then return true end
+        end
+    end
+    return not any
+end
+
+SBtn.MouseButton1Click:Connect(function()
+    if isRunning then
+        isRunning=false
+        SBtn.Text="▶   Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(78,42,195)
+        StLbl.Text="⏸  Durduruldu"; StLbl.TextColor3=Color3.fromRGB(220,95,95)
+        return
+    end
+    if not selectedUnit then
+        StLbl.Text="⚠  Önce ünite seçin!"; StLbl.TextColor3=Color3.fromRGB(255,195,50); return
+    end
+    local any=false
+    for _,v in pairs(statToggles) do if v then any=true break end end
+    if not any then
+        StLbl.Text="⚠  En az 1 stat açın!"; StLbl.TextColor3=Color3.fromRGB(255,195,50); return
+    end
+
+    isRunning=true
+    SBtn.Text="⏹   Durdur"; SBtn.BackgroundColor3=Color3.fromRGB(175,38,38)
+    StLbl.Text="🔄  Başlatılıyor..."; StLbl.TextColor3=Color3.fromRGB(130,255,155)
+
+    task.spawn(function()
+        local rolls=0
+        while isRunning do
+            if not needsReroll() then
+                isRunning=false
+                SBtn.Text="▶   Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(78,42,195)
+                StLbl.Text="✅ Tamamlandı! ("..rolls.." roll)"; StLbl.TextColor3=Color3.fromRGB(95,255,155)
+                break
+            end
+            for _,stat in ipairs(STATS) do
+                if statToggles[stat] then
+                    if not isGoodEnough(getGrade(stat), statTargets[stat]) then
+                        Remote:FireServer(selectedUnit,"Reroll",stat)
+                        task.wait(0.2)
+                    end
+                end
+            end
+            rolls=rolls+1
+            -- Status güncelle: mevcut grade'leri göster
+            local parts={}
+            for _,stat in ipairs(STATS) do
+                if statToggles[stat] then
+                    local g=getGrade(stat) or "?"
+                    table.insert(parts, STAT_DISPLAY[stat]:match("[%a%s]+$"):gsub("^%s+","")..": "..g)
+                end
+            end
+            StLbl.Text="🔄 #"..rolls.." | "..table.concat(parts," | ")
+            task.wait(0.4)
+        end
+    end)
+end)
