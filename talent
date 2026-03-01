@@ -32,7 +32,7 @@ local GC = {
 local STATS      = {"Speed","Critical_Damage","Abilities_DMG","Damage"}
 local STAT_SHORT = {Speed="SPD", Critical_Damage="CRIT", Abilities_DMG="ABIL", Damage="DMG"}
 
-local WAIT_AFTER_ROLL = 3 -- saniye
+local WAIT_AFTER_ROLL = 4 -- saniye
 
 -- ── STATE ────────────────────────────────────────────────────────────────────
 local selectedUnit  = nil
