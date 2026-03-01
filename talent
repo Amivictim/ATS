@@ -1,5 +1,4 @@
--- Auto Reroll GUI v5
--- Fixes: grade parse, inventory highlight, stat toggle bug
+-- at otorerol v1
 
 local Players    = game:GetService("Players")
 local LP         = Players.LocalPlayer
@@ -12,17 +11,10 @@ local UIS        = game:GetService("UserInputService")
 local GRADES = {"SSS+","SSS","SSS-","SS+","SS","SS-","S+","S","S-",
                 "A+","A","A-","B+","B","B-","C+","C","C-","D+","D","D-","E+","E","E-"}
 
--- Parse grade from raw text like "S", "SS-", "SSS+5", "A-x0.14" etc.
 local function gradeFromText(raw)
     raw = tostring(raw):gsub("%s+","")
-    -- exact match first
-    for _,g in ipairs(GRADES) do
-        if raw == g then return g end
-    end
-    -- starts-with match (handles "SS-x0.14", "SSS+5" etc.)
-    for _,g in ipairs(GRADES) do
-        if raw:sub(1,#g) == g then return g end
-    end
+    for _,g in ipairs(GRADES) do if raw==g then return g end end
+    for _,g in ipairs(GRADES) do if raw:sub(1,#g)==g then return g end end
     return nil
 end
 
@@ -40,52 +32,47 @@ local GC = {
 local STATS      = {"Speed","Critical_Damage","Abilities_DMG","Damage"}
 local STAT_SHORT = {Speed="SPD", Critical_Damage="CRIT", Abilities_DMG="ABIL", Damage="DMG"}
 
--- ── STATE ────────────────────────────────────────────────────────────────────
-local selectedUnit   = nil   -- full ID string
-local selectedFrame  = nil   -- the inventory frame to highlight
-local isRunning      = false
-local statToggles    = {Speed=false,Critical_Damage=false,Abilities_DMG=false,Damage=false}
-local statAccepted   = {Speed={},Critical_Damage={},Abilities_DMG={},Damage={}}
+local WAIT_AFTER_ROLL = 3 -- saniye
 
--- ── DEBUG ────────────────────────────────────────────────────────────────────
+-- ── STATE ────────────────────────────────────────────────────────────────────
+local selectedUnit  = nil
+local selectedFrame = nil
+local isRunning     = false
+local statToggles   = {Speed=false,Critical_Damage=false,Abilities_DMG=false,Damage=false}
+local statAccepted  = {Speed={},Critical_Damage={},Abilities_DMG={},Damage={}}
+
 local function dbg(msg) print("[AR] "..tostring(msg)) end
 
 -- ── GRADE READER ─────────────────────────────────────────────────────────────
+local function getNumbersLabel(stat)
+    local root = PGui:FindFirstChild("Talents"); if not root then return nil end
+    local p = root:FindFirstChild("_Frame"); if not p then return nil end
+    p = p:FindFirstChild("Usage"); if not p then return nil end
+    p = p:FindFirstChild("BODY"); if not p then return nil end
+    p = p:FindFirstChild("Grade"); if not p then return nil end
+    p = p:FindFirstChild(stat); if not p then return nil end
+    return p:FindFirstChild("Numbers")
+end
+
 local function getGrade(stat)
-    local root = PGui:FindFirstChild("Talents")
-    if not root then dbg("NO Talents GUI"); return nil end
-    local chain = {"_Frame","Usage","BODY","Grade"}
-    local p = root
-    for _,k in ipairs(chain) do
-        p = p:FindFirstChild(k)
-        if not p then dbg("NO "..k); return nil end
-    end
-    local statNode = p:FindFirstChild(stat)
-    if not statNode then dbg("NO stat node: "..stat); return nil end
-    local nb = statNode:FindFirstChild("Numbers")
-    if not nb then dbg("NO Numbers in "..stat); return nil end
+    local nb = getNumbersLabel(stat); if not nb then return nil end
     local txt = (nb.ContentText ~= "" and nb.ContentText) or nb.Text or ""
-    local grade = gradeFromText(txt)
-    dbg("Read "..stat.." raw='"..txt.."' grade="..tostring(grade))
-    return grade
+    local g = gradeFromText(txt)
+    dbg(stat.." raw='"..txt.."' => "..tostring(g))
+    return g
 end
 
 -- ── INVENTORY HIGHLIGHT ───────────────────────────────────────────────────────
 local highlightStroke = nil
-
 local function clearHighlight()
-    if highlightStroke and highlightStroke.Parent then
-        highlightStroke:Destroy()
-    end
+    if highlightStroke and highlightStroke.Parent then highlightStroke:Destroy() end
     highlightStroke = nil
 end
-
 local function applyHighlight(frame)
     clearHighlight()
     if not frame then return end
     local s = Instance.new("UIStroke", frame)
-    s.Color = Color3.fromRGB(100, 255, 120)
-    s.Thickness = 3
+    s.Color = Color3.fromRGB(100,255,120); s.Thickness = 3
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     highlightStroke = s
 end
@@ -98,14 +85,11 @@ SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SG.Parent=PGui
 
 local W,H = 340,200
 local MF = Instance.new("Frame",SG)
-MF.Size=UDim2.new(0,W,0,H)
-MF.Position=UDim2.new(0.5,-W/2,0.02,0)
-MF.BackgroundColor3=Color3.fromRGB(13,11,22)
-MF.BorderSizePixel=0
+MF.Size=UDim2.new(0,W,0,H); MF.Position=UDim2.new(0.5,-W/2,0.02,0)
+MF.BackgroundColor3=Color3.fromRGB(13,11,22); MF.BorderSizePixel=0
 Instance.new("UICorner",MF).CornerRadius=UDim.new(0,10)
 local ms=Instance.new("UIStroke",MF); ms.Color=Color3.fromRGB(100,45,215); ms.Thickness=2
 
--- drag
 local drag,dragStart,startPos=false,nil,nil
 local TH=28
 UIS.InputBegan:Connect(function(i)
@@ -125,7 +109,7 @@ UIS.InputEnded:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then drag=false end
 end)
 
--- title
+-- Title
 local TB=Instance.new("Frame",MF)
 TB.Size=UDim2.new(1,0,0,TH); TB.BackgroundColor3=Color3.fromRGB(20,12,40); TB.BorderSizePixel=0
 Instance.new("UICorner",TB).CornerRadius=UDim.new(0,10)
@@ -145,7 +129,7 @@ local Body=Instance.new("Frame",MF)
 Body.Size=UDim2.new(1,-12,1,-TH-8); Body.Position=UDim2.new(0,6,0,TH+4)
 Body.BackgroundTransparency=1; Body.BorderSizePixel=0
 
--- ── UNIT DROPDOWN ─────────────────────────────────────────────────────────────
+-- Unit dropdown
 local UBtn=Instance.new("TextButton",Body)
 UBtn.Size=UDim2.new(1,0,0,24); UBtn.Position=UDim2.new(0,0,0,0)
 UBtn.BackgroundColor3=Color3.fromRGB(24,20,44); UBtn.Text="  Ünite Seçin ▾"
@@ -169,26 +153,22 @@ local function positionUList()
     UList.Position=UDim2.new(0,a.X,0,a.Y+s.Y+2)
 end
 
-local function getInterview()
-    return PGui:FindFirstChild("Units")
+local function populateUnits()
+    for _,c in ipairs(UList:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+    local iv = PGui:FindFirstChild("Units")
         and PGui.Units:FindFirstChild("_Frame")
         and PGui.Units._Frame:FindFirstChild("Usage")
         and PGui.Units._Frame.Usage:FindFirstChild("BODY")
         and PGui.Units._Frame.Usage.BODY:FindFirstChild("Useable")
         and PGui.Units._Frame.Usage.BODY.Useable:FindFirstChild("Interview")
-end
-
-local function populateUnits()
-    for _,c in ipairs(UList:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-    local iv = getInterview()
-    local units = {}
+    local units={}
     if iv then
         for _,c in ipairs(iv:GetChildren()) do
             if not c:IsA("UIGridLayout") and not c:IsA("UIListLayout") and not c:IsA("UIPadding") then
-                table.insert(units, {name=c.Name, frame=c})
+                table.insert(units,{name=c.Name,frame=c})
             end
         end
-        table.sort(units, function(a,b) return a.name < b.name end)
+        table.sort(units,function(a,b) return a.name<b.name end)
     end
     dbg("Ünite sayısı: "..#units)
     if #units==0 then
@@ -199,9 +179,8 @@ local function populateUnits()
         UList.CanvasSize=UDim2.new(0,0,0,26); return
     end
     for i,u in ipairs(units) do
-        local uid  = u.name
-        local ivFrame = u.frame
-        local dn = (uid:match("^(.-)%s*%-") or uid):gsub("^%s+",""):gsub("%s+$","")
+        local uid=u.name; local ivF=u.frame
+        local dn=(uid:match("^(.-)%s*%-") or uid):gsub("^%s+",""):gsub("%s+$","")
         local b=Instance.new("TextButton",UList)
         b.Size=UDim2.new(1,0,0,26)
         b.BackgroundColor3=selectedUnit==uid and Color3.fromRGB(58,32,135) or Color3.fromRGB(24,20,42)
@@ -210,11 +189,9 @@ local function populateUnits()
         b.TextSize=11; b.Font=Enum.Font.Gotham
         b.TextXAlignment=Enum.TextXAlignment.Left; b.BorderSizePixel=0; b.LayoutOrder=i; b.ZIndex=21
         b.MouseButton1Click:Connect(function()
-            selectedUnit=uid
-            selectedFrame=ivFrame
+            selectedUnit=uid; selectedFrame=ivF
             dbg("Seçildi: "..uid)
-            -- highlight in inventory
-            applyHighlight(ivFrame)
+            applyHighlight(ivF)
             UBtn.Text="  ✔ "..dn.." ▾"; UBtn.TextColor3=Color3.fromRGB(115,250,145)
             unitOpen=false; UList.Visible=false; UList.Size=UDim2.new(0,W-12,0,0)
         end)
@@ -228,24 +205,18 @@ UBtn.MouseButton1Click:Connect(function()
         populateUnits(); positionUList()
         local n=math.max(1,#UList:GetChildren()-1)
         UList.Visible=true; UList.Size=UDim2.new(0,W-12,0,math.min(n*26,110))
-    else
-        UList.Visible=false
-    end
+    else UList.Visible=false end
 end)
 
--- ── STAT COLUMNS ──────────────────────────────────────────────────────────────
-local statGradeBtns={}
+-- Stat columns
 local ColW=(W-12)/4
-
 for i,stat in ipairs(STATS) do
     local col=Instance.new("Frame",Body)
-    col.Size=UDim2.new(0,ColW-4,0,112)
-    col.Position=UDim2.new(0,(i-1)*ColW,0,30)
+    col.Size=UDim2.new(0,ColW-4,0,112); col.Position=UDim2.new(0,(i-1)*ColW,0,30)
     col.BackgroundColor3=Color3.fromRGB(19,16,34); col.BorderSizePixel=0
     Instance.new("UICorner",col).CornerRadius=UDim.new(0,8)
     Instance.new("UIStroke",col).Color=Color3.fromRGB(44,36,75)
 
-    -- Toggle button
     local tog=Instance.new("TextButton",col)
     tog.Size=UDim2.new(1,-8,0,22); tog.Position=UDim2.new(0,4,0,4)
     tog.BackgroundColor3=Color3.fromRGB(36,32,60); tog.Text="○ "..STAT_SHORT[stat]
@@ -253,7 +224,6 @@ for i,stat in ipairs(STATS) do
     tog.Font=Enum.Font.GothamBold; tog.BorderSizePixel=0
     Instance.new("UICorner",tog).CornerRadius=UDim.new(0,6)
 
-    -- Grade picker button
     local gBtn=Instance.new("TextButton",col)
     gBtn.Size=UDim2.new(1,-8,0,22); gBtn.Position=UDim2.new(0,4,0,30)
     gBtn.BackgroundColor3=Color3.fromRGB(28,22,52); gBtn.Text="Seç ▾"
@@ -261,9 +231,7 @@ for i,stat in ipairs(STATS) do
     gBtn.Font=Enum.Font.GothamBold; gBtn.BorderSizePixel=0
     Instance.new("UICorner",gBtn).CornerRadius=UDim.new(0,6)
     Instance.new("UIStroke",gBtn).Color=Color3.fromRGB(65,45,120)
-    statGradeBtns[stat]=gBtn
 
-    -- Selected grades display
     local selDisp=Instance.new("TextLabel",col)
     selDisp.Size=UDim2.new(1,-6,0,52); selDisp.Position=UDim2.new(0,3,0,56)
     selDisp.BackgroundTransparency=1; selDisp.Text=""
@@ -281,8 +249,7 @@ for i,stat in ipairs(STATS) do
         elseif #picks==1 then
             gBtn.Text=picks[1].." ▾"; gBtn.TextColor3=GC[picks[1]] or Color3.fromRGB(200,195,235)
         else
-            gBtn.Text=picks[1].."+"..tostring(#picks-1).." ▾"
-            gBtn.TextColor3=Color3.fromRGB(195,175,255)
+            gBtn.Text=picks[1].."+"..tostring(#picks-1).." ▾"; gBtn.TextColor3=Color3.fromRGB(195,175,255)
         end
     end
 
@@ -298,7 +265,6 @@ for i,stat in ipairs(STATS) do
         end
     end)
 
-    -- Grade popup
     local GP=Instance.new("ScrollingFrame",SG)
     GP.Size=UDim2.new(0,90,0,0); GP.BackgroundColor3=Color3.fromRGB(17,14,30)
     GP.BorderSizePixel=0; GP.ScrollBarThickness=3
@@ -312,11 +278,8 @@ for i,stat in ipairs(STATS) do
     for gi,grade in ipairs(GRADES) do
         local gb=Instance.new("TextButton",GP)
         gb.Size=UDim2.new(1,0,0,24); gb.BorderSizePixel=0; gb.LayoutOrder=gi; gb.ZIndex=31
-        local sel=statAccepted[stat][grade]==true
-        gb.BackgroundColor3=sel and Color3.fromRGB(55,32,112) or Color3.fromRGB(22,18,38)
-        gb.BackgroundTransparency=sel and 0 or 0.2
-        gb.Text=(sel and "✔ " or "  ")..grade
-        gb.TextColor3=GC[grade] or Color3.fromRGB(220,220,220)
+        gb.BackgroundColor3=Color3.fromRGB(22,18,38); gb.BackgroundTransparency=0.2
+        gb.Text="  "..grade; gb.TextColor3=GC[grade] or Color3.fromRGB(220,220,220)
         gb.TextSize=11; gb.Font=Enum.Font.GothamBold
         gb.MouseButton1Click:Connect(function()
             statAccepted[stat][grade]=not statAccepted[stat][grade]
@@ -337,15 +300,10 @@ for i,stat in ipairs(STATS) do
             local popH=math.min(#GRADES*24,160)
             GP.Size=UDim2.new(0,90,0,popH)
             local screenH=SG.AbsoluteSize.Y
-            if a.Y+s2.Y+popH+4>screenH then
-                GP.Position=UDim2.new(0,a.X,0,a.Y-popH-4)
-            else
-                GP.Position=UDim2.new(0,a.X,0,a.Y+s2.Y+4)
-            end
+            GP.Position=UDim2.new(0,a.X,0,
+                a.Y+s2.Y+popH+4>screenH and a.Y-popH-4 or a.Y+s2.Y+4)
             GP.Visible=true
-        else
-            GP.Visible=false
-        end
+        else GP.Visible=false end
     end)
 
     UIS.InputBegan:Connect(function(inp)
@@ -359,7 +317,7 @@ for i,stat in ipairs(STATS) do
     end)
 end
 
--- ── STATUS + BUTTON ───────────────────────────────────────────────────────────
+-- Status + Button
 local StLbl=Instance.new("TextLabel",Body)
 StLbl.Size=UDim2.new(1,0,0,16); StLbl.Position=UDim2.new(0,0,1,-38)
 StLbl.BackgroundTransparency=1; StLbl.Text="⏸ Hazır"
@@ -375,94 +333,110 @@ SBtn.Font=Enum.Font.GothamBold; SBtn.BorderSizePixel=0
 Instance.new("UICorner",SBtn).CornerRadius=UDim.new(0,8)
 Instance.new("UIStroke",SBtn).Color=Color3.fromRGB(135,85,255)
 
+-- ── COUNTDOWN HELPER ─────────────────────────────────────────────────────────
+local function waitWithCountdown(seconds, labelPrefix)
+    for t = seconds, 1, -1 do
+        if not isRunning then return end
+        StLbl.Text = labelPrefix .. " (" .. t .. "s)"
+        task.wait(1)
+    end
+end
+
 -- ── LOGIC ─────────────────────────────────────────────────────────────────────
 local function isAccepted(stat)
     local anyGrade=false
     for _,v in pairs(statAccepted[stat]) do if v then anyGrade=true; break end end
     if not anyGrade then return false end
-    local cur=getGrade(stat)
-    if not cur then return false end
+    local cur=getGrade(stat); if not cur then return false end
     return statAccepted[stat][cur]==true
 end
 
-local function needsReroll()
-    local anyEnabled=false
-    for _,stat in ipairs(STATS) do
-        if statToggles[stat] then
-            anyEnabled=true
-            if not isAccepted(stat) then return true end
-        end
-    end
-    return not anyEnabled
-end
-
 SBtn.MouseButton1Click:Connect(function()
-    dbg("Başlat basıldı | running="..tostring(isRunning))
     if isRunning then
         isRunning=false
         SBtn.Text="▶  Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(72,38,188)
         StLbl.Text="⏸ Durduruldu"; StLbl.TextColor3=Color3.fromRGB(210,85,85)
         return
     end
-
-    -- Validations
     if not selectedUnit then
-        StLbl.Text="⚠ Ünite seç!"; StLbl.TextColor3=Color3.fromRGB(255,185,40)
-        dbg("FAIL: ünite yok"); return
-    end
+        StLbl.Text="⚠ Ünite seç!"; StLbl.TextColor3=Color3.fromRGB(255,185,40); return end
     local anyEnabled=false
-    for _,stat in ipairs(STATS) do
-        if statToggles[stat] then anyEnabled=true end
-    end
-    dbg("anyEnabled="..tostring(anyEnabled))
+    for _,stat in ipairs(STATS) do if statToggles[stat] then anyEnabled=true end end
     if not anyEnabled then
-        StLbl.Text="⚠ Stat aç! (● yap)"; StLbl.TextColor3=Color3.fromRGB(255,185,40)
-        dbg("FAIL: stat açılmadı"); return
-    end
+        StLbl.Text="⚠ Stat aç! (● yap)"; StLbl.TextColor3=Color3.fromRGB(255,185,40); return end
     for _,stat in ipairs(STATS) do
         if statToggles[stat] then
             local anyGrade=false
             for _,v in pairs(statAccepted[stat]) do if v then anyGrade=true; break end end
-            dbg(stat.." grade seçili mi: "..tostring(anyGrade))
             if not anyGrade then
-                StLbl.Text="⚠ "..STAT_SHORT[stat].." grade seç!"; StLbl.TextColor3=Color3.fromRGB(255,185,40)
-                dbg("FAIL: "..stat.." grade yok"); return
+                StLbl.Text="⚠ "..STAT_SHORT[stat].." grade seç!"
+                StLbl.TextColor3=Color3.fromRGB(255,185,40); return
             end
         end
     end
 
-    dbg("Reroll başlıyor... unit="..tostring(selectedUnit))
     isRunning=true
     SBtn.Text="⏹  Durdur"; SBtn.BackgroundColor3=Color3.fromRGB(165,32,32)
-    StLbl.Text="🔄 Başlıyor..."; StLbl.TextColor3=Color3.fromRGB(115,250,145)
+    StLbl.TextColor3=Color3.fromRGB(115,250,145)
 
     task.spawn(function()
         local rolls=0
-        while isRunning do
-            if not needsReroll() then
-                isRunning=false
-                SBtn.Text="▶  Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(72,38,188)
-                StLbl.Text="✅ Bitti! ("..rolls.."r)"; StLbl.TextColor3=Color3.fromRGB(85,250,145)
-                dbg("Tamamlandı! rolls="..rolls); break
-            end
+        local allDone=false
+
+        while isRunning and not allDone do
+            allDone=true
+
             for _,stat in ipairs(STATS) do
-                if statToggles[stat] and not isAccepted(stat) then
-                    dbg("FireServer: "..selectedUnit.." | "..stat)
-                    Remote:FireServer(selectedUnit,"Reroll",stat)
-                    task.wait(0.2)
+                if not isRunning then break end
+                if statToggles[stat] then
+                    local accepted=isAccepted(stat)
+                    dbg(stat.." accepted="..tostring(accepted))
+
+                    if not accepted then
+                        allDone=false
+                        -- Fire remote
+                        dbg("FireServer: "..selectedUnit.." | "..stat)
+                        Remote:FireServer(selectedUnit,"Reroll",stat)
+                        rolls=rolls+1
+
+                        -- Countdown bekle (animasyon bitsin)
+                        local prefix="🎲 "..STAT_SHORT[stat].." roll #"..rolls
+                        waitWithCountdown(WAIT_AFTER_ROLL, prefix)
+                        if not isRunning then break end
+
+                        -- Şimdi oku
+                        local newGrade=getGrade(stat)
+                        local ok=newGrade and statAccepted[stat][newGrade]==true
+                        dbg(stat.." sonuç: "..tostring(newGrade).." ok="..tostring(ok))
+
+                        -- Kısa durum göster
+                        local parts={}
+                        for _,s in ipairs(STATS) do
+                            if statToggles[s] then
+                                local g=getGrade(s) or "?"
+                                local check=statAccepted[s][g] and "✔" or "✘"
+                                table.insert(parts, check..STAT_SHORT[s]..":"..g)
+                            end
+                        end
+                        StLbl.Text=table.concat(parts," ")
+                        StLbl.TextColor3=Color3.fromRGB(200,200,255)
+                    end
                 end
             end
-            rolls=rolls+1
+        end
+
+        if isRunning then
+            -- Tüm statlar tamam
+            isRunning=false
+            SBtn.Text="▶  Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(72,38,188)
             local parts={}
             for _,stat in ipairs(STATS) do
                 if statToggles[stat] then
                     table.insert(parts, STAT_SHORT[stat]..":"..(getGrade(stat) or "?"))
                 end
             end
-            StLbl.Text="🔄#"..rolls.." "..table.concat(parts," ")
-            task.wait(0.35)
+            StLbl.Text="✅ Bitti! "..table.concat(parts," ").." ("..rolls.."r)"
+            StLbl.TextColor3=Color3.fromRGB(85,250,145)
         end
     end)
 end)
-
-dbg("GUI hazır!")
