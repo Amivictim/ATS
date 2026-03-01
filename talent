@@ -1,27 +1,21 @@
--- Auto Reroll GUI v3
--- Mobile drag + küçük GUI + çoklu grade seçimi
-
+-- Auto Reroll GUI v4 - Compact Rectangle
 local Players    = game:GetService("Players")
 local LP         = Players.LocalPlayer
 local PGui       = LP:WaitForChild("PlayerGui")
 local RS         = game:GetService("ReplicatedStorage")
 local Remote     = RS:WaitForChild("Remotes"):WaitForChild("Systems"):WaitForChild("Potentials_Rolling")
 local UIS        = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 
--- ── GRADES ──────────────────────────────────────────────────────────────────
 local GRADES = {"SSS+","SSS","SSS-","SS+","SS","SS-","S+","S","S-",
-                "A+","A","A-","B+","B","B-","C+","C","C-",
-                "D+","D","D-","E+","E","E-"}
+                "A+","A","A-","B+","B","B-","C+","C","C-","D+","D","D-","E+","E","E-"}
 
 local function gradeFromText(t)
-    t = t:gsub("%s+","")
+    t=t:gsub("%s+","")
     for _,g in ipairs(GRADES) do if t==g then return g end end
     for _,g in ipairs(GRADES) do if t:find(g,1,true) then return g end end
-    return nil
 end
 
-local gradeColors = {
+local GC = {
     ["SSS+"]=Color3.fromRGB(255,180,0),  ["SSS"]=Color3.fromRGB(255,195,30),  ["SSS-"]=Color3.fromRGB(255,210,60),
     ["SS+"]=Color3.fromRGB(180,80,255),  ["SS"]=Color3.fromRGB(190,100,255),  ["SS-"]=Color3.fromRGB(205,125,255),
     ["S+"]=Color3.fromRGB(60,170,255),   ["S"]=Color3.fromRGB(80,190,255),    ["S-"]=Color3.fromRGB(110,210,255),
@@ -32,134 +26,97 @@ local gradeColors = {
     ["E+"]=Color3.fromRGB(120,120,120),  ["E"]=Color3.fromRGB(140,140,140),   ["E-"]=Color3.fromRGB(160,160,160),
 }
 
--- ── STATS ───────────────────────────────────────────────────────────────────
-local STATS = {"Speed","Critical_Damage","Abilities_DMG","Damage"}
-local STAT_LABEL = {Speed="Speed", Critical_Damage="Critical", Abilities_DMG="Abil.DMG", Damage="Damage"}
+local STATS      = {"Speed","Critical_Damage","Abilities_DMG","Damage"}
+local STAT_SHORT = {Speed="SPD", Critical_Damage="CRIT", Abilities_DMG="ABIL", Damage="DMG"}
 
--- ── STATE ────────────────────────────────────────────────────────────────────
-local selectedUnit  = nil
-local isRunning     = false
-local statToggles   = {Speed=false,Critical_Damage=false,Abilities_DMG=false,Damage=false}
--- çoklu grade: set per stat
-local statAccepted  = {Speed={},Critical_Damage={},Abilities_DMG={},Damage={}}
+local selectedUnit = nil
+local isRunning    = false
+local statToggles  = {Speed=false,Critical_Damage=false,Abilities_DMG=false,Damage=false}
+local statAccepted = {Speed={},Critical_Damage={},Abilities_DMG={},Damage={}}
 
--- ── DESTROY OLD ─────────────────────────────────────────────────────────────
 if PGui:FindFirstChild("ARGui") then PGui.ARGui:Destroy() end
-
--- ── SCREEN GUI ──────────────────────────────────────────────────────────────
 local SG = Instance.new("ScreenGui")
-SG.Name="ARGui"; SG.ResetOnSpawn=false
-SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SG.Parent=PGui
+SG.Name="ARGui"; SG.ResetOnSpawn=false; SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SG.Parent=PGui
 
--- ── MAIN FRAME ──────────────────────────────────────────────────────────────
-local W,H = 290, 420
+-- MAIN: wide rectangle, short height
+local W,H = 340,195
 local MF = Instance.new("Frame",SG)
-MF.Name="Main"; MF.Size=UDim2.new(0,W,0,H)
-MF.Position=UDim2.new(0.5,-W/2,0.5,-H/2)
+MF.Size=UDim2.new(0,W,0,H)
+MF.Position=UDim2.new(0.5,-W/2,0.02,0)
 MF.BackgroundColor3=Color3.fromRGB(13,11,22)
-MF.BorderSizePixel=0; MF.ClipsDescendants=false
-Instance.new("UICorner",MF).CornerRadius=UDim.new(0,14)
-local mstroke=Instance.new("UIStroke",MF)
-mstroke.Color=Color3.fromRGB(105,50,225); mstroke.Thickness=2
+MF.BorderSizePixel=0
+Instance.new("UICorner",MF).CornerRadius=UDim.new(0,10)
+local ms=Instance.new("UIStroke",MF); ms.Color=Color3.fromRGB(100,45,215); ms.Thickness=2
 
--- Mobile drag
-local dragging,dragStart,startPos=false,nil,nil
-local TitleH=38
-local function inputBegan(input)
-    local pos=input.Position
-    local abs=MF.AbsolutePosition
-    if pos.X>=abs.X and pos.X<=abs.X+MF.AbsoluteSize.X
-    and pos.Y>=abs.Y and pos.Y<=abs.Y+TitleH then
-        dragging=true; dragStart=pos; startPos=MF.Position
+-- Mobile drag via title bar
+local drag,dragStart,startPos=false,nil,nil
+local TH=28
+UIS.InputBegan:Connect(function(i)
+    if i.UserInputType~=Enum.UserInputType.Touch and i.UserInputType~=Enum.UserInputType.MouseButton1 then return end
+    local p=i.Position; local a=MF.AbsolutePosition
+    if p.X>=a.X and p.X<=a.X+W and p.Y>=a.Y and p.Y<=a.Y+TH then
+        drag=true; dragStart=p; startPos=MF.Position
     end
-end
-local function inputChanged(input)
-    if dragging and dragStart then
-        local delta=input.Position-dragStart
-        MF.Position=UDim2.new(
-            startPos.X.Scale, startPos.X.Offset+delta.X,
-            startPos.Y.Scale, startPos.Y.Offset+delta.Y)
+end)
+UIS.InputChanged:Connect(function(i)
+    if drag and dragStart and (i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseMovement) then
+        local d=i.Position-dragStart
+        MF.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
     end
-end
-local function inputEnded() dragging=false end
-UIS.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then inputBegan(i) end end)
-UIS.InputChanged:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseMovement then inputChanged(i) end end)
-UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then inputEnded() end end)
-
--- ── TITLE BAR ───────────────────────────────────────────────────────────────
-local TB=Instance.new("Frame",MF)
-TB.Size=UDim2.new(1,0,0,TitleH); TB.BackgroundColor3=Color3.fromRGB(22,13,44); TB.BorderSizePixel=0
-Instance.new("UICorner",TB).CornerRadius=UDim.new(0,14)
-local TL=Instance.new("TextLabel",TB)
-TL.Size=UDim2.new(1,-42,1,0); TL.Position=UDim2.new(0,12,0,0)
-TL.BackgroundTransparency=1; TL.Text="⚡ Auto Reroll"
-TL.TextColor3=Color3.fromRGB(195,150,255); TL.TextSize=15
-TL.Font=Enum.Font.GothamBold; TL.TextXAlignment=Enum.TextXAlignment.Left
-local XB=Instance.new("TextButton",TB)
-XB.Size=UDim2.new(0,26,0,26); XB.Position=UDim2.new(1,-32,0.5,-13)
-XB.BackgroundColor3=Color3.fromRGB(175,35,35); XB.Text="✕"
-XB.TextColor3=Color3.fromRGB(255,255,255); XB.TextSize=12
-XB.Font=Enum.Font.GothamBold; XB.BorderSizePixel=0
-Instance.new("UICorner",XB).CornerRadius=UDim.new(0,7)
-XB.MouseButton1Click:Connect(function() isRunning=false; SG:Destroy() end)
-
--- ── SCROLL ──────────────────────────────────────────────────────────────────
-local Sc=Instance.new("ScrollingFrame",MF)
-Sc.Size=UDim2.new(1,0,1,-TitleH); Sc.Position=UDim2.new(0,0,0,TitleH)
-Sc.BackgroundTransparency=1; Sc.BorderSizePixel=0
-Sc.ScrollBarThickness=3; Sc.ScrollBarImageColor3=Color3.fromRGB(105,50,225)
-Sc.CanvasSize=UDim2.new(0,0,0,0); Sc.ScrollingDirection=Enum.ScrollingDirection.Y
-local ScL=Instance.new("UIListLayout",Sc)
-ScL.SortOrder=Enum.SortOrder.LayoutOrder; ScL.Padding=UDim.new(0,5)
-local ScP=Instance.new("UIPadding",Sc)
-ScP.PaddingLeft=UDim.new(0,10); ScP.PaddingRight=UDim.new(0,10)
-ScP.PaddingTop=UDim.new(0,8); ScP.PaddingBottom=UDim.new(0,8)
-ScL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    Sc.CanvasSize=UDim2.new(0,0,0,ScL.AbsoluteContentSize.Y+16)
+end)
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.Touch or i.UserInputType==Enum.UserInputType.MouseButton1 then drag=false end
 end)
 
-local function mkLbl(txt,order,color)
-    local l=Instance.new("TextLabel",Sc)
-    l.Size=UDim2.new(1,0,0,17); l.BackgroundTransparency=1
-    l.Text=txt; l.TextColor3=color or Color3.fromRGB(150,105,255)
-    l.TextSize=11; l.Font=Enum.Font.GothamBold
-    l.TextXAlignment=Enum.TextXAlignment.Left; l.LayoutOrder=order
-    return l
-end
+-- TITLE BAR
+local TB=Instance.new("Frame",MF)
+TB.Size=UDim2.new(1,0,0,TH); TB.BackgroundColor3=Color3.fromRGB(20,12,40); TB.BorderSizePixel=0
+Instance.new("UICorner",TB).CornerRadius=UDim.new(0,10)
+local TL=Instance.new("TextLabel",TB)
+TL.Size=UDim2.new(1,-36,1,0); TL.Position=UDim2.new(0,8,0,0)
+TL.BackgroundTransparency=1; TL.Text="⚡ Auto Reroll"
+TL.TextColor3=Color3.fromRGB(190,145,255); TL.TextSize=13
+TL.Font=Enum.Font.GothamBold; TL.TextXAlignment=Enum.TextXAlignment.Left
+local XB=Instance.new("TextButton",TB)
+XB.Size=UDim2.new(0,22,0,22); XB.Position=UDim2.new(1,-26,0.5,-11)
+XB.BackgroundColor3=Color3.fromRGB(170,30,30); XB.Text="✕"
+XB.TextColor3=Color3.fromRGB(255,255,255); XB.TextSize=11; XB.Font=Enum.Font.GothamBold; XB.BorderSizePixel=0
+Instance.new("UICorner",XB).CornerRadius=UDim.new(0,6)
+XB.MouseButton1Click:Connect(function() isRunning=false; SG:Destroy() end)
 
-local function mkFrame(h,order,col)
-    local f=Instance.new("Frame",Sc)
-    f.Size=UDim2.new(1,0,0,h); f.BackgroundColor3=col or Color3.fromRGB(20,17,35)
-    f.BorderSizePixel=0; f.LayoutOrder=order
-    Instance.new("UICorner",f).CornerRadius=UDim.new(0,9)
-    local s=Instance.new("UIStroke",f); s.Color=Color3.fromRGB(48,40,80); s.Thickness=1
-    return f
-end
+-- BODY padding
+local Body=Instance.new("Frame",MF)
+Body.Size=UDim2.new(1,-12,1,-TH-8); Body.Position=UDim2.new(0,6,0,TH+4)
+Body.BackgroundTransparency=1; Body.BorderSizePixel=0
 
--- ── UNIT DROPDOWN ───────────────────────────────────────────────────────────
-mkLbl("📦 Ünite Seç",1)
+-- ROW 1: Unit dropdown (full width)
+local UBtn=Instance.new("TextButton",Body)
+UBtn.Size=UDim2.new(1,0,0,24); UBtn.Position=UDim2.new(0,0,0,0)
+UBtn.BackgroundColor3=Color3.fromRGB(24,20,44); UBtn.Text="  Ünite Seçin ▾"
+UBtn.TextColor3=Color3.fromRGB(175,170,215); UBtn.TextSize=11; UBtn.Font=Enum.Font.Gotham
+UBtn.TextXAlignment=Enum.TextXAlignment.Left; UBtn.BorderSizePixel=0
+Instance.new("UICorner",UBtn).CornerRadius=UDim.new(0,7)
+Instance.new("UIStroke",UBtn).Color=Color3.fromRGB(68,48,122)
 
-local UBtn=Instance.new("TextButton",Sc)
-UBtn.Size=UDim2.new(1,0,0,32); UBtn.BackgroundColor3=Color3.fromRGB(26,22,46)
-UBtn.Text="  Ünite Seçin ▾"; UBtn.TextColor3=Color3.fromRGB(185,180,220)
-UBtn.TextSize=11; UBtn.Font=Enum.Font.Gotham
-UBtn.TextXAlignment=Enum.TextXAlignment.Left; UBtn.BorderSizePixel=0; UBtn.LayoutOrder=2
-Instance.new("UICorner",UBtn).CornerRadius=UDim.new(0,9)
-Instance.new("UIStroke",UBtn).Color=Color3.fromRGB(72,52,128)
-
-local UList=Instance.new("ScrollingFrame",Sc)
-UList.Size=UDim2.new(1,0,0,0); UList.BackgroundColor3=Color3.fromRGB(18,15,32)
-UList.BorderSizePixel=0; UList.ScrollBarThickness=3
-UList.ScrollBarImageColor3=Color3.fromRGB(105,50,225)
-UList.Visible=false; UList.LayoutOrder=3; UList.ClipsDescendants=true
-Instance.new("UICorner",UList).CornerRadius=UDim.new(0,9)
+-- Unit dropdown list (floats over UI, attached to SG)
+local UList=Instance.new("ScrollingFrame",SG)
+UList.Size=UDim2.new(0,W-12,0,0)
+UList.BackgroundColor3=Color3.fromRGB(18,15,32); UList.BorderSizePixel=0
+UList.ScrollBarThickness=3; UList.ScrollBarImageColor3=Color3.fromRGB(100,45,215)
+UList.Visible=false; UList.ClipsDescendants=true; UList.ZIndex=20
+Instance.new("UICorner",UList).CornerRadius=UDim.new(0,8)
+Instance.new("UIStroke",UList).Color=Color3.fromRGB(100,45,215)
 local ULL=Instance.new("UIListLayout",UList); ULL.SortOrder=Enum.SortOrder.LayoutOrder
 local unitOpen=false
 
+local function positionUList()
+    local a=UBtn.AbsolutePosition; local s=UBtn.AbsoluteSize
+    UList.Position=UDim2.new(0,a.X,0,a.Y+s.Y+2)
+end
+
 local function populateUnits()
     for _,c in ipairs(UList:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-    local iv = PGui:FindFirstChild("Units")
-        and PGui.Units:FindFirstChild("_Frame")
+    local iv=PGui:FindFirstChild("Units") and PGui.Units:FindFirstChild("_Frame")
         and PGui.Units._Frame:FindFirstChild("Usage")
         and PGui.Units._Frame.Usage:FindFirstChild("BODY")
         and PGui.Units._Frame.Usage.BODY:FindFirstChild("Useable")
@@ -175,192 +132,179 @@ local function populateUnits()
     end
     if #units==0 then
         local nb=Instance.new("TextButton",UList)
-        nb.Size=UDim2.new(1,0,0,28); nb.BackgroundTransparency=1
-        nb.Text="⚠ Units GUI açık değil!"; nb.TextColor3=Color3.fromRGB(255,75,75)
-        nb.TextSize=10; nb.Font=Enum.Font.Gotham
-        UList.CanvasSize=UDim2.new(0,0,0,28); return
+        nb.Size=UDim2.new(1,0,0,26); nb.BackgroundTransparency=1
+        nb.Text="⚠ Units GUI açık değil!"; nb.TextColor3=Color3.fromRGB(255,70,70)
+        nb.TextSize=10; nb.Font=Enum.Font.Gotham; nb.ZIndex=21
+        UList.CanvasSize=UDim2.new(0,0,0,26); return
     end
     for i,uid in ipairs(units) do
         local dn=(uid:match("^(.-)%s*%-") or uid):gsub("^%s+",""):gsub("%s+$","")
         local b=Instance.new("TextButton",UList)
-        b.Size=UDim2.new(1,0,0,28)
-        b.BackgroundColor3=selectedUnit==uid and Color3.fromRGB(62,35,140) or Color3.fromRGB(26,22,44)
-        b.BackgroundTransparency=selectedUnit==uid and 0 or 0.2
-        b.Text="  "..dn; b.TextColor3=Color3.fromRGB(210,205,250)
+        b.Size=UDim2.new(1,0,0,26)
+        b.BackgroundColor3=selectedUnit==uid and Color3.fromRGB(58,32,135) or Color3.fromRGB(24,20,42)
+        b.BackgroundTransparency=selectedUnit==uid and 0 or 0.15
+        b.Text="  "..dn; b.TextColor3=Color3.fromRGB(205,200,245)
         b.TextSize=11; b.Font=Enum.Font.Gotham
-        b.TextXAlignment=Enum.TextXAlignment.Left; b.BorderSizePixel=0; b.LayoutOrder=i
+        b.TextXAlignment=Enum.TextXAlignment.Left; b.BorderSizePixel=0; b.LayoutOrder=i; b.ZIndex=21
         b.MouseButton1Click:Connect(function()
             selectedUnit=uid
-            UBtn.Text="  ✔ "..dn.." ▾"; UBtn.TextColor3=Color3.fromRGB(120,255,150)
-            unitOpen=false; UList.Visible=false; UList.Size=UDim2.new(1,0,0,0)
+            UBtn.Text="  ✔ "..dn.." ▾"; UBtn.TextColor3=Color3.fromRGB(115,250,145)
+            unitOpen=false; UList.Visible=false; UList.Size=UDim2.new(0,W-12,0,0)
         end)
     end
-    UList.CanvasSize=UDim2.new(0,0,0,#units*28)
+    UList.CanvasSize=UDim2.new(0,0,0,#units*26)
 end
 
 UBtn.MouseButton1Click:Connect(function()
     unitOpen=not unitOpen
     if unitOpen then
-        populateUnits()
+        populateUnits(); positionUList()
         local n=math.max(1,#UList:GetChildren()-1)
-        UList.Visible=true; UList.Size=UDim2.new(1,0,0,math.min(n*28,110))
+        UList.Visible=true; UList.Size=UDim2.new(0,W-12,0,math.min(n*26,104))
     else
-        UList.Visible=false; UList.Size=UDim2.new(1,0,0,0)
+        UList.Visible=false
     end
 end)
 
--- ── STAT ROWS ───────────────────────────────────────────────────────────────
-mkLbl("🎯 Stat Hedefleri (çoklu grade seç)",4)
-
--- Grade popup (tek ortak popup, yukarıda scroll'un üstünde açılır)
-local GradePopup=Instance.new("Frame",SG) -- SG'ye bağlı, scroll'un dışında
-GradePopup.Size=UDim2.new(0,150,0,0)
-GradePopup.BackgroundColor3=Color3.fromRGB(18,15,32)
-GradePopup.BorderSizePixel=0; GradePopup.Visible=false
-GradePopup.ZIndex=10
-Instance.new("UICorner",GradePopup).CornerRadius=UDim.new(0,9)
-local gps=Instance.new("UIStroke",GradePopup); gps.Color=Color3.fromRGB(105,50,225); gps.Thickness=1
-local GradeScroll=Instance.new("ScrollingFrame",GradePopup)
-GradeScroll.Size=UDim2.new(1,-4,1,-4); GradeScroll.Position=UDim2.new(0,2,0,2)
-GradeScroll.BackgroundTransparency=1; GradeScroll.BorderSizePixel=0
-GradeScroll.ScrollBarThickness=3; GradeScroll.ScrollBarImageColor3=Color3.fromRGB(105,50,225)
-GradeScroll.ZIndex=10
-local GradeLL=Instance.new("UIListLayout",GradeScroll)
-GradeLL.SortOrder=Enum.SortOrder.LayoutOrder
-
-local currentPopupStat=nil
-local gradeButtons={} -- grade -> button ref, per stat
-local statGradeBtns={} -- stat -> summary button ref
-
-local function buildGradePopup(stat, anchorBtn)
-    currentPopupStat=stat
-    -- Clear
-    for _,c in ipairs(GradeScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-
-    for gi,grade in ipairs(GRADES) do
-        local selected=statAccepted[stat][grade]==true
-        local gb=Instance.new("TextButton",GradeScroll)
-        gb.Size=UDim2.new(1,0,0,26); gb.BorderSizePixel=0; gb.LayoutOrder=gi
-        gb.BackgroundColor3=selected and Color3.fromRGB(58,34,118) or Color3.fromRGB(24,20,40)
-        gb.BackgroundTransparency=selected and 0 or 0.3
-        gb.Text=(selected and "✔ " or "  ")..grade
-        gb.TextColor3=gradeColors[grade] or Color3.fromRGB(220,220,220)
-        gb.TextSize=12; gb.Font=Enum.Font.GothamBold; gb.ZIndex=11
-
-        gb.MouseButton1Click:Connect(function()
-            statAccepted[stat][grade]=not statAccepted[stat][grade]
-            local sel=statAccepted[stat][grade]
-            gb.BackgroundColor3=sel and Color3.fromRGB(58,34,118) or Color3.fromRGB(24,20,40)
-            gb.BackgroundTransparency=sel and 0 or 0.3
-            gb.Text=(sel and "✔ " or "  ")..grade
-
-            -- Update summary button text
-            local picks={}
-            for _,g in ipairs(GRADES) do if statAccepted[stat][g] then table.insert(picks,g) end end
-            local ref=statGradeBtns[stat]
-            if ref then
-                if #picks==0 then
-                    ref.Text="Seç ▾"; ref.TextColor3=Color3.fromRGB(160,155,200)
-                elseif #picks==1 then
-                    ref.Text=picks[1].." ▾"; ref.TextColor3=gradeColors[picks[1]] or Color3.fromRGB(220,220,220)
-                else
-                    ref.Text=picks[1].."+"..tostring(#picks-1).." ▾"
-                    ref.TextColor3=Color3.fromRGB(200,180,255)
-                end
-            end
-        end)
-    end
-
-    GradeScroll.CanvasSize=UDim2.new(0,0,0,#GRADES*26)
-
-    -- Position popup near button
-    local abs=anchorBtn.AbsolutePosition
-    local sz=anchorBtn.AbsoluteSize
-    local popH=math.min(#GRADES*26+4,180)
-    GradePopup.Size=UDim2.new(0,150,0,popH)
-    -- Try below, if off-screen go above
-    local screenH=SG.AbsoluteSize.Y
-    local topBelow=abs.Y+sz.Y+4
-    if topBelow+popH>screenH then
-        GradePopup.Position=UDim2.new(0,abs.X+sz.X-150,0,abs.Y-popH-4)
-    else
-        GradePopup.Position=UDim2.new(0,abs.X+sz.X-150,0,topBelow)
-    end
-    GradePopup.Visible=true
-end
-
--- Close popup when tapping outside
-UIS.InputBegan:Connect(function(input)
-    if not GradePopup.Visible then return end
-    if input.UserInputType==Enum.UserInputType.Touch or input.UserInputType==Enum.UserInputType.MouseButton1 then
-        local pos=input.Position
-        local ap=GradePopup.AbsolutePosition; local as=GradePopup.AbsoluteSize
-        if pos.X<ap.X or pos.X>ap.X+as.X or pos.Y<ap.Y or pos.Y>ap.Y+as.Y then
-            GradePopup.Visible=false; currentPopupStat=nil
-        end
-    end
-end)
-
+-- ROW 2: 4 stat columns
+local statGradeBtns={}
+local ColW=(W-12)/4
 for i,stat in ipairs(STATS) do
-    local row=mkFrame(38,4+i)
-    -- Toggle
-    local tog=Instance.new("TextButton",row)
-    tog.Size=UDim2.new(0,28,0,28); tog.Position=UDim2.new(0,5,0.5,-14)
-    tog.BackgroundColor3=Color3.fromRGB(40,36,65); tog.Text="○"
-    tog.TextColor3=Color3.fromRGB(128,122,172); tog.TextSize=15
-    tog.Font=Enum.Font.GothamBold; tog.BorderSizePixel=0
-    Instance.new("UICorner",tog).CornerRadius=UDim.new(0,7)
-    -- Stat name
-    local sn=Instance.new("TextLabel",row)
-    sn.Size=UDim2.new(0,80,1,0); sn.Position=UDim2.new(0,38,0,0)
-    sn.BackgroundTransparency=1; sn.Text=STAT_LABEL[stat]
-    sn.TextColor3=Color3.fromRGB(190,185,220); sn.TextSize=11
-    sn.Font=Enum.Font.Gotham; sn.TextXAlignment=Enum.TextXAlignment.Left
-    -- Grade picker button
-    local gpBtn=Instance.new("TextButton",row)
-    gpBtn.Size=UDim2.new(0,105,0,26); gpBtn.Position=UDim2.new(1,-110,0.5,-13)
-    gpBtn.BackgroundColor3=Color3.fromRGB(30,25,55); gpBtn.Text="Seç ▾"
-    gpBtn.TextColor3=Color3.fromRGB(160,155,200); gpBtn.TextSize=12
-    gpBtn.Font=Enum.Font.GothamBold; gpBtn.BorderSizePixel=0
-    Instance.new("UICorner",gpBtn).CornerRadius=UDim.new(0,7)
-    Instance.new("UIStroke",gpBtn).Color=Color3.fromRGB(70,50,130)
-    statGradeBtns[stat]=gpBtn
+    local col=Instance.new("Frame",Body)
+    col.Size=UDim2.new(0,ColW-4,0,110)
+    col.Position=UDim2.new(0,(i-1)*ColW,0,30)
+    col.BackgroundColor3=Color3.fromRGB(19,16,34); col.BorderSizePixel=0
+    Instance.new("UICorner",col).CornerRadius=UDim.new(0,8)
+    Instance.new("UIStroke",col).Color=Color3.fromRGB(44,36,75)
 
-    gpBtn.MouseButton1Click:Connect(function()
-        if GradePopup.Visible and currentPopupStat==stat then
-            GradePopup.Visible=false; currentPopupStat=nil
+    -- Toggle
+    local tog=Instance.new("TextButton",col)
+    tog.Size=UDim2.new(1,-8,0,22); tog.Position=UDim2.new(0,4,0,4)
+    tog.BackgroundColor3=Color3.fromRGB(36,32,60); tog.Text="○ "..STAT_SHORT[stat]
+    tog.TextColor3=Color3.fromRGB(125,118,168); tog.TextSize=10
+    tog.Font=Enum.Font.GothamBold; tog.BorderSizePixel=0
+    Instance.new("UICorner",tog).CornerRadius=UDim.new(0,6)
+
+    -- Grade button
+    local gBtn=Instance.new("TextButton",col)
+    gBtn.Size=UDim2.new(1,-8,0,22); gBtn.Position=UDim2.new(0,4,0,30)
+    gBtn.BackgroundColor3=Color3.fromRGB(28,22,52); gBtn.Text="Seç ▾"
+    gBtn.TextColor3=Color3.fromRGB(155,148,198); gBtn.TextSize=10
+    gBtn.Font=Enum.Font.GothamBold; gBtn.BorderSizePixel=0
+    Instance.new("UICorner",gBtn).CornerRadius=UDim.new(0,6)
+    Instance.new("UIStroke",gBtn).Color=Color3.fromRGB(65,45,120)
+    statGradeBtns[stat]=gBtn
+
+    -- Selected grades display
+    local selDisp=Instance.new("TextLabel",col)
+    selDisp.Size=UDim2.new(1,-8,0,50); selDisp.Position=UDim2.new(0,4,0,56)
+    selDisp.BackgroundTransparency=1; selDisp.Text=""
+    selDisp.TextColor3=Color3.fromRGB(200,195,235); selDisp.TextSize=9
+    selDisp.Font=Enum.Font.Gotham; selDisp.TextWrapped=true
+    selDisp.TextXAlignment=Enum.TextXAlignment.Center
+    selDisp.TextYAlignment=Enum.TextYAlignment.Top
+
+    local function updateDisp()
+        local picks={}
+        for _,g in ipairs(GRADES) do if statAccepted[stat][g] then table.insert(picks,g) end end
+        selDisp.Text=table.concat(picks,"\n")
+        if #picks==0 then
+            gBtn.Text="Seç ▾"; gBtn.TextColor3=Color3.fromRGB(155,148,198)
+        elseif #picks==1 then
+            gBtn.Text=picks[1].." ▾"; gBtn.TextColor3=GC[picks[1]] or Color3.fromRGB(200,195,235)
         else
-            buildGradePopup(stat,gpBtn)
+            gBtn.Text=picks[1].."+"..#picks-1 .." ▾"; gBtn.TextColor3=Color3.fromRGB(195,175,255)
         end
-    end)
+    end
 
     tog.MouseButton1Click:Connect(function()
         statToggles[stat]=not statToggles[stat]
         if statToggles[stat] then
-            tog.Text="●"; tog.BackgroundColor3=Color3.fromRGB(75,42,185)
-            tog.TextColor3=Color3.fromRGB(195,152,255)
+            tog.Text="● "..STAT_SHORT[stat]; tog.BackgroundColor3=Color3.fromRGB(70,38,178)
+            tog.TextColor3=Color3.fromRGB(190,148,255)
         else
-            tog.Text="○"; tog.BackgroundColor3=Color3.fromRGB(40,36,65)
-            tog.TextColor3=Color3.fromRGB(128,122,172)
+            tog.Text="○ "..STAT_SHORT[stat]; tog.BackgroundColor3=Color3.fromRGB(36,32,60)
+            tog.TextColor3=Color3.fromRGB(125,118,168)
+        end
+    end)
+
+    -- Grade popup (SG level)
+    local GP=Instance.new("ScrollingFrame",SG)
+    GP.Size=UDim2.new(0,90,0,0); GP.BackgroundColor3=Color3.fromRGB(17,14,30)
+    GP.BorderSizePixel=0; GP.ScrollBarThickness=3
+    GP.ScrollBarImageColor3=Color3.fromRGB(100,45,215)
+    GP.Visible=false; GP.ClipsDescendants=true; GP.ZIndex=30
+    Instance.new("UICorner",GP).CornerRadius=UDim.new(0,8)
+    Instance.new("UIStroke",GP).Color=Color3.fromRGB(100,45,215)
+    local GPL=Instance.new("UIListLayout",GP); GPL.SortOrder=Enum.SortOrder.LayoutOrder
+    local gpOpen=false
+
+    for gi,grade in ipairs(GRADES) do
+        local gb=Instance.new("TextButton",GP)
+        gb.Size=UDim2.new(1,0,0,24); gb.BorderSizePixel=0; gb.LayoutOrder=gi; gb.ZIndex=31
+        local sel=statAccepted[stat][grade]==true
+        gb.BackgroundColor3=sel and Color3.fromRGB(55,32,112) or Color3.fromRGB(22,18,38)
+        gb.BackgroundTransparency=sel and 0 or 0.2
+        gb.Text=(sel and "✔ " or "  ")..grade
+        gb.TextColor3=GC[grade] or Color3.fromRGB(220,220,220)
+        gb.TextSize=11; gb.Font=Enum.Font.GothamBold
+        gb.MouseButton1Click:Connect(function()
+            statAccepted[stat][grade]=not statAccepted[stat][grade]
+            local s2=statAccepted[stat][grade]
+            gb.BackgroundColor3=s2 and Color3.fromRGB(55,32,112) or Color3.fromRGB(22,18,38)
+            gb.BackgroundTransparency=s2 and 0 or 0.2
+            gb.Text=(s2 and "✔ " or "  ")..grade
+            updateDisp()
+        end)
+    end
+    GP.CanvasSize=UDim2.new(0,0,0,#GRADES*24)
+
+    gBtn.MouseButton1Click:Connect(function()
+        gpOpen=not gpOpen
+        if gpOpen then
+            local a=gBtn.AbsolutePosition; local s2=gBtn.AbsoluteSize
+            local popH=math.min(#GRADES*24,160)
+            GP.Size=UDim2.new(0,90,0,popH)
+            local screenH=SG.AbsoluteSize.Y
+            if a.Y+s2.Y+popH+4>screenH then
+                GP.Position=UDim2.new(0,a.X,0,a.Y-popH-4)
+            else
+                GP.Position=UDim2.new(0,a.X,0,a.Y+s2.Y+4)
+            end
+            GP.Visible=true
+        else
+            GP.Visible=false
+        end
+    end)
+
+    UIS.InputBegan:Connect(function(inp)
+        if not GP.Visible then return end
+        if inp.UserInputType==Enum.UserInputType.Touch or inp.UserInputType==Enum.UserInputType.MouseButton1 then
+            local p=inp.Position; local ap=GP.AbsolutePosition; local as=GP.AbsoluteSize
+            if p.X<ap.X or p.X>ap.X+as.X or p.Y<ap.Y or p.Y>ap.Y+as.Y then
+                GP.Visible=false; gpOpen=false
+            end
         end
     end)
 end
 
--- ── STATUS ──────────────────────────────────────────────────────────────────
-local StLbl=Instance.new("TextLabel",Sc)
-StLbl.Size=UDim2.new(1,0,0,18); StLbl.BackgroundTransparency=1
-StLbl.Text="⏸  Hazır"; StLbl.TextColor3=Color3.fromRGB(130,125,165)
-StLbl.TextSize=11; StLbl.Font=Enum.Font.Gotham; StLbl.LayoutOrder=20
+-- ROW 3: Status + Start button
+local StLbl=Instance.new("TextLabel",Body)
+StLbl.Size=UDim2.new(0.55,0,0,16); StLbl.Position=UDim2.new(0,0,1,-38)
+StLbl.BackgroundTransparency=1; StLbl.Text="⏸ Hazır"
+StLbl.TextColor3=Color3.fromRGB(125,120,160); StLbl.TextSize=10
+StLbl.Font=Enum.Font.Gotham; StLbl.TextXAlignment=Enum.TextXAlignment.Left
+StLbl.TextTruncate=Enum.TextTruncate.AtEnd
 
--- ── START/STOP ──────────────────────────────────────────────────────────────
-local SBtn=Instance.new("TextButton",Sc)
-SBtn.Size=UDim2.new(1,0,0,40); SBtn.BackgroundColor3=Color3.fromRGB(75,40,190)
-SBtn.Text="▶   Başlat"; SBtn.TextColor3=Color3.fromRGB(255,255,255)
-SBtn.TextSize=14; SBtn.Font=Enum.Font.GothamBold; SBtn.BorderSizePixel=0; SBtn.LayoutOrder=21
-Instance.new("UICorner",SBtn).CornerRadius=UDim.new(0,11)
-local sbst=Instance.new("UIStroke",SBtn); sbst.Color=Color3.fromRGB(140,90,255); sbst.Thickness=2
+local SBtn=Instance.new("TextButton",Body)
+SBtn.Size=UDim2.new(1,0,0,26); SBtn.Position=UDim2.new(0,0,1,-26)
+SBtn.BackgroundColor3=Color3.fromRGB(72,38,188); SBtn.Text="▶  Başlat"
+SBtn.TextColor3=Color3.fromRGB(255,255,255); SBtn.TextSize=13
+SBtn.Font=Enum.Font.GothamBold; SBtn.BorderSizePixel=0
+Instance.new("UICorner",SBtn).CornerRadius=UDim.new(0,8)
+Instance.new("UIStroke",SBtn).Color=Color3.fromRGB(135,85,255)
 
--- ── LOGIC ───────────────────────────────────────────────────────────────────
+-- LOGIC
 local function getGrade(stat)
     local p=PGui:FindFirstChild("Talents")
     if not p then return nil end
@@ -375,65 +319,52 @@ local function getGrade(stat)
 end
 
 local function isAccepted(stat)
-    local accepted=statAccepted[stat]
-    -- Hiç seçim yoksa reroll yap
     local any=false
-    for _,v in pairs(accepted) do if v then any=true break end end
+    for _,v in pairs(statAccepted[stat]) do if v then any=true break end end
     if not any then return false end
     local cur=getGrade(stat)
-    if not cur then return false end
-    return accepted[cur]==true
+    return cur~=nil and statAccepted[stat][cur]==true
 end
 
 local function needsReroll()
-    local anyEnabled=false
+    local anyE=false
     for _,stat in ipairs(STATS) do
-        if statToggles[stat] then
-            anyEnabled=true
+        if statToggles[stat] then anyE=true
             if not isAccepted(stat) then return true end
         end
     end
-    return not anyEnabled
+    return not anyE
 end
 
 SBtn.MouseButton1Click:Connect(function()
     if isRunning then
         isRunning=false
-        SBtn.Text="▶   Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(75,40,190)
-        StLbl.Text="⏸  Durduruldu"; StLbl.TextColor3=Color3.fromRGB(215,90,90)
-        return
+        SBtn.Text="▶  Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(72,38,188)
+        StLbl.Text="⏸ Durduruldu"; StLbl.TextColor3=Color3.fromRGB(210,85,85); return
     end
-    if not selectedUnit then
-        StLbl.Text="⚠  Önce ünite seçin!"; StLbl.TextColor3=Color3.fromRGB(255,190,45); return
-    end
+    if not selectedUnit then StLbl.Text="⚠ Ünite seç!"; StLbl.TextColor3=Color3.fromRGB(255,185,40); return end
     local anyE=false
     for _,v in pairs(statToggles) do if v then anyE=true break end end
-    if not anyE then
-        StLbl.Text="⚠  En az 1 stat açın!"; StLbl.TextColor3=Color3.fromRGB(255,190,45); return
-    end
-    -- Check grade selections
+    if not anyE then StLbl.Text="⚠ Stat aç!"; StLbl.TextColor3=Color3.fromRGB(255,185,40); return end
     for _,stat in ipairs(STATS) do
         if statToggles[stat] then
             local any=false
             for _,v in pairs(statAccepted[stat]) do if v then any=true break end end
-            if not any then
-                StLbl.Text="⚠  "..STAT_LABEL[stat].." için grade seç!"; StLbl.TextColor3=Color3.fromRGB(255,190,45); return
-            end
+            if not any then StLbl.Text="⚠ "..STAT_SHORT[stat].." grade seç!"; StLbl.TextColor3=Color3.fromRGB(255,185,40); return end
         end
     end
 
     isRunning=true
-    SBtn.Text="⏹   Durdur"; SBtn.BackgroundColor3=Color3.fromRGB(170,36,36)
-    StLbl.Text="🔄  Başlatılıyor..."; StLbl.TextColor3=Color3.fromRGB(120,255,150)
+    SBtn.Text="⏹  Durdur"; SBtn.BackgroundColor3=Color3.fromRGB(165,32,32)
+    StLbl.Text="🔄 Başlıyor..."; StLbl.TextColor3=Color3.fromRGB(115,250,145)
 
     task.spawn(function()
         local rolls=0
         while isRunning do
             if not needsReroll() then
                 isRunning=false
-                SBtn.Text="▶   Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(75,40,190)
-                StLbl.Text="✅ Tamamlandı! ("..rolls.." roll)"; StLbl.TextColor3=Color3.fromRGB(90,255,150)
-                break
+                SBtn.Text="▶  Başlat"; SBtn.BackgroundColor3=Color3.fromRGB(72,38,188)
+                StLbl.Text="✅ Bitti! ("..rolls.."r)"; StLbl.TextColor3=Color3.fromRGB(85,250,145); break
             end
             for _,stat in ipairs(STATS) do
                 if statToggles[stat] and not isAccepted(stat) then
@@ -445,11 +376,10 @@ SBtn.MouseButton1Click:Connect(function()
             local parts={}
             for _,stat in ipairs(STATS) do
                 if statToggles[stat] then
-                    local g=getGrade(stat) or "?"
-                    table.insert(parts,STAT_LABEL[stat]..":"..g)
+                    table.insert(parts,STAT_SHORT[stat]..":"..(getGrade(stat) or "?"))
                 end
             end
-            StLbl.Text="🔄 #"..rolls.." | "..table.concat(parts," ")
+            StLbl.Text="🔄#"..rolls.." "..table.concat(parts," ")
             task.wait(0.35)
         end
     end)
