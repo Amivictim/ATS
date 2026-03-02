@@ -7,7 +7,7 @@ local RS         = game:GetService("ReplicatedStorage")
 local Remote     = RS:WaitForChild("Remotes"):WaitForChild("Systems"):WaitForChild("Potentials_Rolling")
 local UIS        = game:GetService("UserInputService")
 
--- ── GRADES ──────────────────────────────────────────────────────────────────
+-- grades ──────────────────────────────────────────────────────────────────
 local GRADES = {"SSS+","SSS","SSS-","SS+","SS","SS-","S+","S","S-",
                 "A+","A","A-","B+","B","B-","C+","C","C-","D+","D","D-","E+","E","E-"}
 
@@ -32,9 +32,9 @@ local GC = {
 local STATS      = {"Speed","Critical_Damage","Abilities_DMG","Damage"}
 local STAT_SHORT = {Speed="SPD", Critical_Damage="CRIT", Abilities_DMG="ABIL", Damage="DMG"}
 
-local WAIT_AFTER_ROLL = 4 -- saniye
+local WAIT_AFTER_ROLL = 5 -- saniye
 
--- ── STATE ────────────────────────────────────────────────────────────────────
+-- STATE ────────────────────────────────────────────────────────────────────
 local selectedUnit  = nil
 local selectedFrame = nil
 local isRunning     = false
@@ -115,7 +115,7 @@ TB.Size=UDim2.new(1,0,0,TH); TB.BackgroundColor3=Color3.fromRGB(20,12,40); TB.Bo
 Instance.new("UICorner",TB).CornerRadius=UDim.new(0,10)
 local TL=Instance.new("TextLabel",TB)
 TL.Size=UDim2.new(1,-36,1,0); TL.Position=UDim2.new(0,8,0,0)
-TL.BackgroundTransparency=1; TL.Text="⚡ Auto Reroll"
+TL.BackgroundTransparency=1; TL.Text="Auto Reroll"
 TL.TextColor3=Color3.fromRGB(190,145,255); TL.TextSize=13
 TL.Font=Enum.Font.GothamBold; TL.TextXAlignment=Enum.TextXAlignment.Left
 local XB=Instance.new("TextButton",TB)
@@ -174,7 +174,7 @@ local function populateUnits()
     if #units==0 then
         local nb=Instance.new("TextButton",UList)
         nb.Size=UDim2.new(1,0,0,26); nb.BackgroundTransparency=1
-        nb.Text="⚠ Units GUI açık değil!"; nb.TextColor3=Color3.fromRGB(255,70,70)
+        nb.Text="!!! Units GUI açık değil!!!"; nb.TextColor3=Color3.fromRGB(255,70,70)
         nb.TextSize=10; nb.Font=Enum.Font.Gotham; nb.ZIndex=21
         UList.CanvasSize=UDim2.new(0,0,0,26); return
     end
